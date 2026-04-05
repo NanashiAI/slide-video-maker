@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>スライド動画メーカー (インスタ向け)</title>
+  <script src="https://unpkg.com/mp4-muxer/build/mp4-muxer.js"></script>
+  <style>
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 20px; max-width: 500px; margin: 0 auto; color: #333; background-color: #f9f9f9; }
+    h1 { font-size: 22px; text-align: center; }
+    p.desc { font-size: 14px; color: #666; text-align: center; margin-bottom: 20px; }
+    
+    .control-group { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 20px; }
+    label { font-weight: bold; font-size: 14px; display: block; margin-bottom: 5px; }
+    select, input[type="file"] { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; box-sizing: border-box; }
+    
+    button { width: 100%; padding: 15px; font-size: 18px; font-weight: bold; color: white; background-color: #4CAF50; border: none; border-radius: 8px; cursor: pointer; transition: background 0.3s; }
+    button:disabled { background-color: #ccc; cursor: not-allowed; }
+    
+    #status { text-align: center; margin: 15px 0; font-weight: bold; color: #0066cc; min-height: 24px; }
+    canvas { display: none; /* 裏で処理するため完全に隠す */ }
+    
+    .download-btn { display: block; width: 100%; padding: 15px; background: #E1306C; color: white; text-align: center; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 18px; display: none; box-sizing: border-box;}
+    
+    hr { border: none; border-top: 1px solid #ddd; margin: 40px 0 20px; }
+    
+    /* 広告・投げ銭エリアのデザイン */
+    .ad-area { text-align: center; min-height: 250px; background: #eee; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; border-radius: 8px; color: #aaa; font-size: 12px; }
+    .support-area { text-align: center; padding: 20px; background: #fff; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+    .support-area p { font-size: 13px; color: #555; line-height: 1.5; margin-bottom: 10px; }
+    .ofuse-btn { display: inline-block; padding: 10px 20px; background: #ff9900; color: white; text-decoration: none; border-radius: 20px; font-weight: bold; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+  <h1>スライド動画メーカー</h1>
+  <p class="desc">複数枚の画像を選ぶだけで、インスタサイズ(縦長)のMP4動画をブラウザ上で生成します。</p>
+
+  <div class="control-group">
+    <label for="durationSelect">⏱️ 1枚あたりの表示時間</label>
+    <select id="durationSelect">
+      <option value="1">1秒</option>
+      <option value="2">2秒</option>
+      <option value="3" selected>3秒</option>
+      <option value="4">4秒</option>
+      <option value="5">5秒</option>
+    </select>
+
+    <label for="imageInput">📸 画像を選択 (複数可)</label>
+    <input type="file" id="imageInput" accept="image/*" multiple>
+  </div>
+
+  <button id="generateBtn">🎬 動画を生成する</button>
+  <div id="status"></div>
+  <a id="downloadLink" class="download-btn">⬇️ 動画を保存する</a>
+
+  <!-- 裏で処理する画用紙 -->
+  <canvas id="canvas" width="1080" height="1920"></canvas>
+
+  <hr>
+
+  <!-- ===============================
+       ここに忍者AdMaxの広告タグを貼ります
+       =============================== -->
+  <div class="ad-area">
+<!-- admax -->
+
+<script src="https://adm.shinobi.jp/s/57bd28e2d975c3d304dbf98834609705"></script>
+
+<!-- admax -->
+  </div>
+
+  <!-- ===============================
+       ここにOFUSEのリンクを貼ります
+       =============================== -->
+  <div class="support-area">
+    <p>💡 このツールは個人開発者が完全無料で提供しています。<br>サーバー維持と開発継続のため、もしよろしければ応援をお願いします！</p>
+    <!-- hrefの中身をあなたのOFUSEリンクに書き換えてください -->
+    <a href="https://ofuse.me/4af7da02" target="_blank" class="ofuse-btn">☕️ 開発者をOFUSEで応援する</a>
+  </div>
+
+
+  <script>
+    const imageInput = document.getElementById('imageInput');
+    const durationSelect = document.getElementById('durationSelect');
+    const generateBtn = document.getElementById('generateBtn');
+    const statusDiv = document.getElementById('status');
+    const downloadLink = document.getElementById('downloadLink');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    generateBtn.addEventListener('click', async () => {
+      if (typeof VideoEncoder === 'undefined') {
+        alert("お使いのブラウザは動画生成に対応していません。"); return;
+      }
+      const files = imageInput.files;
+      if (files.length === 0) {
+        alert("画像を選択してください！"); return;
+      }
+
+      generateBtn.disabled = true;
+      downloadLink.style.display = 'none';
+      statusDiv.textContent = "画像を読み込んでいます...";
+
+      const images =[];
+      for (const file of files) {
+        images.push(await loadImage(file));
+      }
+
+      statusDiv.textContent = "動画をエンコード中... (そのままお待ちください)";
+
+      // プルダウンから秒数を取得し、数値に変換して渡す
+      const selectedSeconds = parseInt(durationSelect.value, 10);
+
+      try {
+        await createVideo(images, selectedSeconds);
+        statusDiv.textContent = "✨ 完成しました！下のボタンから保存できます。";
+      } catch (e) {
+        statusDiv.textContent = "❌ エラーが発生しました: " + e.message;
+        console.error(e);
+      }
+      generateBtn.disabled = false;
+    });
+
+    function loadImage(file) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+        img.onerror = reject;
+        img.src = url;
+      });
+    }
+
+    // 引数に秒数(secondsPerImage)を追加
+    async function createVideo(images, secondsPerImage) {
+      const width = canvas.width;
+      const height = canvas.height;
+      const fps = 30; 
+      const framesPerImage = fps * secondsPerImage; // 選択された秒数で計算
+
+      const muxer = new Mp4Muxer.Muxer({
+        target: new Mp4Muxer.ArrayBufferTarget(),
+        video: { codec: 'avc', width: width, height: height },
+        fastStart: 'in-memory',
+      });
+
+      const encoder = new VideoEncoder({
+        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+        error: (e) => console.error(e)
+      });
+
+      // 修正済みの高解像度対応コーデック
+      encoder.configure({
+        codec: 'avc1.4D002A', 
+        width: width,
+        height: height,
+        bitrate: 5_000_000, 
+        framerate: fps,
+      });
+
+      let frameCount = 0;
+
+      for (let i = 0; i < images.length; i++) {
+        const img = images[i];
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, width, height);
+
+        const scale = Math.min(width / img.width, height / img.height);
+        const drawW = img.width * scale;
+        const drawH = img.height * scale;
+        const drawX = (width - drawW) / 2;
+        const drawY = (height - drawH) / 2;
+        
+        ctx.drawImage(img, drawX, drawY, drawW, drawH);
+
+        for (let f = 0; f < framesPerImage; f++) {
+          const timestamp = (frameCount / fps) * 1_000_000; 
+          const frame = new VideoFrame(canvas, { timestamp });
+          const keyFrame = (frameCount % fps === 0);
+          encoder.encode(frame, { keyFrame });
+          frame.close(); 
+          frameCount++;
+        }
+      }
+
+      await encoder.flush();
+      encoder.close();
+      muxer.finalize();
+      
+      const blob = new Blob([muxer.target.buffer], { type: 'video/mp4' });
+      const url = URL.createObjectURL(blob);
+      downloadLink.href = url;
+      downloadLink.download = `slide_${Date.now()}.mp4`;
+      downloadLink.style.display = 'block';
+    }
+  </script>
+</body>
+</html>
