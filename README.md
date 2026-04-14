@@ -2,7 +2,7 @@
 
 アプリのインストール不要で、ブラウザだけで複数画像から縦長MP4動画（1080×1920px）を作れる無料ツールです。日本語・英語に対応しています。
 
-👉 **[ツールを開く](https://nanashiai.github.io/insta-slide-tool/ai_studio_code_%E3%82%B9%E3%83%A9%E3%82%A4%E3%83%89%E5%8B%95%E7%94%BB%E3%83%A1%E3%83%BC%E3%82%AB%E3%83%BC.html)**
+👉 **[ツールを開く](https://nanashiai.github.io/slide-video-maker/)**
 
 ---
 
